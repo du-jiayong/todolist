@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Todo List</title>
+    <link rel="stylesheet" href="./assets/css/base(1).css">
+    <link rel="stylesheet" href="./assets/css/index.css">
+    <link rel="stylesheet" href="../js/nprogress/nprogress.css">
+</head>
+
+<body>
+    <section class="todoapp">
+        <header class="header">
+            <h1>todos</h1>
+            <input type="text" class="new-todo" placeholder="What needs to be done?" autofocus id="task">
+        </header>
+        <!-- This section should be hidden by default and shown when there are todos -->
+        <section class="main">
+            <input class="toggle-all" type="checkbox">
+            <ul class="todo-list" id="todo-list"></ul>
+        </section>
+        <!-- This footer should hidden by default and shown when there are todos -->
+        <footer class="footer">
+            <!-- This should be `0 items left` by default -->
+            <span class="todo-count"><strong id="count">0</strong> item left</span>
+            <!-- Remove this if you don't implement routing -->
+            <ul class="filters">
+                <li>
+                    <a class="selected" href="javascript:;">All</a>
+                </li>
+                <li>
+                    <a href="javascript:;">Active</a>
+                </li>
+                <li>
+                    <a href="javascript:;">Completed</a>
+                </li>
+            </ul>
+            <!-- Hidden if no completed items are left ↓ -->
+            <button class="clear-completed">Clear completed</button>
+        </footer>
+    </section>
+    <script src="../js/jquery.min.js"></script>
+    <script src="../js/template-web.js"></script>
+    <script src="../js/nprogress/nprogress.js"></script>
+    <!-- 任务列表模板 -->
+    <script type="text/html" id="taskTpl">
+        <!-- 遍历从数据库中得到的数据 -->
+            {{each tasks}}
+    <!-- 判断多选框的状态来判断是否给li添加中横线样式类名 -->
+    <li class="{{$value.completed ? 'completed' : ''}}">
+        <div class="view">
+            <!-- 根据对象返回的completed值判断多选框状态 -->
+            <input class="toggle" type="checkbox" {{$value.completed ? 'checked': ''}}>
+            <label>{{$value.title}}</label>
+            <button class="destroy" data-id='{{$value._id}}'></button>
+        </div>
+        <input class="edit">
+    </li>
+    {{/each}}
+    </script>
+    <script type="text/javascript">
+        //先定义一个空数组
+        var taskAry = [];
+        //获取ul标签
+        var taskBox = $('#todo-list')
+        //获取输入框
+        var taskInp = $('#task');
+        // 获取显示未完成事件数量的盒子
+        var strong = $('#count');
+        //在页面上展示所有数据
+        //发送ajax请求获取数据库中内容
+        $.ajax({
+            url: '/todo/task',
+            success: function (res) {
+                //将数据库中的内ring添加进我们创建的新数组中
+                taskAry = res;
+                // 调用函数将数组中的内容渲染到页面上
+                render();
+                //调用函数计算页面中未完成的任务个数,实时渲染
+                calcCount();
+            }
+        })
+        //完成添加任务的功能
+        //给输入框添加一个键盘事件
+        taskInp.on('keyup', function (e) {
+            // 获取输入框中的内容去除空格
+            var taskName = $(this).val().trim().replace(/\s/g, '');
+            //如果按下回车键
+            if (e.keyCode == 13) {
+                //如果输入内容不等于空
+                if (taskName.trim().length == 0) {
+                    alert('请输入内容');
+                    return;
+                }
+                // 判断用户输入数据是否存在,返回布尔值
+                let flag = taskAry.find(item => item.title == taskName);
+                //如果存在
+                if (flag) {
+                    alert('该数据已经存在了');
+                    // 清空输入框中的值
+                    taskInp.val('');
+                    return;
+                }
+                //调用函数将数据添加进数据库中
+                $.ajax({
+                    type: 'post',
+                    url: '/todo/addTask',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ title: taskName }),
+                    success: function (res) {
+                        // 将数据库返回的新数据添加到数组中
+                        taskAry.push(res),
+                            // 调用函数将数组中的内容渲染到页面上
+                            render();
+                        //将input清空
+                        taskInp.val('');
+                        //调用函数计算页面中未完成的任务个数,实时渲染
+                        calcCount();
+                    }
+                })
+            }
+        })
+        //完成删除任务的功能
+        taskBox.on('click', '.destroy', function () {
+            // 获取点击到的数据的自定义属性id
+            var id = $(this).attr('data-id');
+            // 根据id发送ajax
+            $.ajax({
+                url: '/todo/deleteTask',
+                type: 'get',
+                data: {
+                    _id: id
+                },
+                success: function (res) {
+                    // 获取此数据在数组中的序列号
+                    var index = taskAry.findIndex(item => item._id == id);
+                    // 使用splic方法从第index个删起,删除一个
+                    taskAry.splice(index, 1);
+                    // 调用函数将数组中的内容渲染到页面上
+                    render();
+                    //调用函数计算页面中未完成的任务个数,实时渲染
+                    calcCount();
+                }
+            })
+        })
+        //完成用户改变复选框状态任务类型改变
+        taskBox.on('change', '.toggle', function () {
+            //判断任务的复选框是否被选中
+            const status = $(this).is(':checked');
+            // 获取点击数据的自定义id
+            const id = $(this).siblings('button').attr('data-id');
+            // 根据id发送ajax
+            $.ajax({
+                type: 'post',
+                url: '/todo/modifyTask',
+                data: JSON.stringify({ _id: id, completed: status }),
+                contentType: 'application/json',
+                success: function (response) {
+                    // 将任务状态同步到任务数组中
+                    var task = taskAry.find(item => item._id == id);
+                    // 更改任务状态
+                    task.completed = response.completed;
+                    // 将数组中任务的最新状态更新到页面中
+                    render();
+                    // 计算未完成任务数量
+                    calcCount()
+                }
+            })
+        })
+        //增加双击修改用户功能
+        //双击事件时触发
+        taskBox.on('dblclick', 'label', function () {
+            // 为点击到的数据添加类名使其隐藏
+            $(this).parent().parent().addClass('editing');
+            // 清空其下面的input
+            $(this).parent().siblings('input').val($(this).text());
+            // 让这个文本框获取焦点
+            $(this).parent().siblings('input').focus();
+        })
+        //失去焦点时触发
+        taskBox.on('blur', '.edit', function () {
+            // 获取文本框内容
+            var newTaskName = $(this).val();
+            // 查找此条数据未更改前id
+            var id = $(this).siblings().find('button').attr('data-id');
+            // 根据id发送ajax在数据库中将其修改并返回修改后的值
+            $.ajax({
+                url: '/todo/modifyTask',
+                type: 'post',
+                data: JSON.stringify({ _id: id, title: newTaskName }),
+                contentType: 'application/json',
+                success: function (response) {
+                    // 将当期任务的最新状态同步到任务数组中
+                    var task = taskAry.find(item => item._id == id);
+                    // 修改任务名称
+                    task.title = response.title;
+                    // 将任务数组中的任务同步到页面中
+                    render();
+                    // 计算未完成任务数量
+                    calcCount()
+                }
+            })
+        })
+        // 定义一个函数用来渲染模板
+        function render() {
+            //调用模板template方法
+            var str = template('taskTpl', {
+                tasks: taskAry
+            });
+            //把str这个字符串添加到ul中
+            taskBox.html(str);
+        }
+        //定义一个函数用来计算未完成任务的数量
+        function calcCount() {
+            //存储计算结果的变量
+            var count = 0;
+            //将未完成的任务使用filter方法过滤到一个新的数组中
+            var newAry = taskAry.filter(item => item.completed == false);
+            //新数组的长度即为未完成事件的件数
+            count = newAry.length;
+            // 将得到的数据添加到页面中的盒子里
+            strong.text(count);
+        }
+    </script>
+</body>
+
+</html>
